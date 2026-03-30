@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Food Safety Provenance System</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.0/dist/ethers.umd.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; }
+    h1 { color: #1a1a2e; }
+    h2 { color: #333; border-bottom: 2px solid #ccc; padding-bottom: 6px; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    input, select, textarea { width: 100%; padding: 8px; margin: 6px 0 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+    button { background: #1a1a2e; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #333; }
+    #status { padding: 10px; border-radius: 4px; margin-top: 10px; font-size: 14px; }
+    .info    { background: #d1ecf1; color: #0c5460; }
+  </style>
+</head>
+<body>
+    <h1>🌿 Food Safety Provenance System</h1>
+    <p>Blockchain-Based Supply Chain Tracking — CSE 540 | Team Project</p>
+
+    <div class="card">
+    <h2>Wallet</h2>
+    <p>Connected: <strong id="walletAddress">Not connected</strong></p>
+    <button onclick="connectWallet()">Connect MetaMask</button>
+    <div id="status" class="info">Connect your wallet to begin.</div>
+    </div>
+
+    <div class="card">
+    <h2>Create Batch <span style="font-size:13px;color:#888">(Farmer only)</span></h2>
+    <input id="cb_batchId"     placeholder="Batch ID (e.g., BATCH-2026-001)" />
+    <input id="cb_productName" placeholder="Product Name (e.g., Romaine Lettuce)" />
+    <input id="cb_ipfsCid"     placeholder="Origin Certificate IPFS CID (optional)" />
+    <input id="cb_location"    placeholder="Farm Location (e.g., Yuma, AZ)" />
+    <input id="cb_notes"       placeholder="Notes (e.g., Organic certified, field #4)" />
+    <button onclick="createBatch()">Create Batch</button>
+    </div>
+
+    <div class="card">
+    <h2>Transfer Custody</h2>
+    <input id="tc_batchId"  placeholder="Batch ID" />
+    <input id="tc_to"       placeholder="Recipient Wallet Address (0x...)" />
+    <select id="tc_stage">
+        <option value="1">Processing</option>
+        <option value="2">Packaged</option>
+        <option value="3">In Transit</option>
+        <option value="4">At Retail</option>
+        <option value="6">Consumed</option>
+    </select>
+    <input id="tc_location" placeholder="Transfer Location (e.g., Phoenix, AZ Cold Storage)" />
+    <input id="tc_ipfsCid"  placeholder="Supporting Document IPFS CID (optional)" />
+    <input id="tc_notes"    placeholder="Notes (e.g., Temperature: 3°C, Vehicle ID: TR-44)" />
+    <button onclick="transferCustody()">Transfer Custody</button>
+    </div>
+    </body>
+</html>
