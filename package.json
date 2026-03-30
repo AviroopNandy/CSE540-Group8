@@ -1,0 +1,24 @@
+{
+  "name": "cse540-group8",
+  "version": "1.0.0",
+  "description": "",
+  "main": "hardhat.config.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AviroopNandy/CSE540-Group8.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AviroopNandy/CSE540-Group8/issues"
+  },
+  "homepage": "https://github.com/AviroopNandy/CSE540-Group8#readme",
+  "dependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^7.0.0",
+    "hardhat": "^3.2.0"
+  }
+}
