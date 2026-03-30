@@ -1,3 +1,19 @@
+# Blockchain-Based Supply Chain Provenance System for Food Safety Tracking
+
+**CSE 540: Engineering Blockchain Applications Course Project**  
+**Team Members:**  
+Aviroop Nandy, Vatsal Nirmal, Maninderjit Singh Bhullar, Khalid Alamri, Vaibhavee Ketankumar Panchal
+
+---
+
+## Project Description
+
+This project implements a blockchain-based food supply chain provenance system on Ethereum using Solidity smart contracts. Every participant in the food supply chain - farmers, processors, logistics providers, retailers, and regulators - can record, verify, and audit the complete journey of a food product batch from farm to consumer.
+
+The system uses two smart contracts. `ProvenanceRegistry` records every custody transfer event as an immutable on-chain audit trail linked to a unique Batch ID. `AlertRecallManager` monitors safety violations and triggers product recalls, automatically freezing affected batches on-chain when a high-severity violation is reported. Supporting documents such as inspection reports and sensor logs are stored off-chain on IPFS; only the content hash is recorded on-chain.
+
+---
+
 ## Dependencies
 
 | Tool | Purpose |  

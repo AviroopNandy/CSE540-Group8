@@ -53,4 +53,54 @@ contract ProvenanceRegistry {
     modifier batchExists(string memory batchId) { require(bytes(batches[batchId].batchId).length > 0, "Batch not found"); _; }
     modifier notRecalled(string memory batchId) { require(!batches[batchId].isRecalled, "Batch recalled"); _; }
     modifier onlyRecallManager() { require(msg.sender == recallManagerAddress, "Not RecallManager"); _; }
+
+    // Deployer is assigned Admin role on deployment
+
+    constructor() {
+        owner = msg.sender;
+        roles[msg.sender] = Role.Admin;
+    }
+
+    // Admin assigns roles to supply chain participants
+    function assignRole(address participant, Role role) external onlyAdmin {}
+
+    // Must be called after deployment to authorize AlertRecallManager cross-contract calls
+    function setRecallManagerAddress(address _addr) external onlyAdmin {}
+
+    // Farmer registers a new batch at harvest; logs the first CustodyEvent in the audit trail
+    function createBatch(
+        string memory batchId,
+        string memory productName,
+        string memory originIpfsCid,
+        string memory location,
+        string memory notes
+    ) external onlyFarmer {}
+
+    // Current custodian passes the batch to the next participant; stage must advance forward
+    // Appends a new CustodyEvent to the immutable audit trail
+    function transferCustody(
+        string memory batchId,
+        address to,
+        BatchStage newStage,
+        string memory location,
+        string memory ipfsCid,
+        string memory notes
+    ) external batchExists(batchId) onlyCustodian(batchId) notRecalled(batchId) {}
+
+    // Called only by AlertRecallManager to freeze a batch; blocks all further transfers
+    function markAsRecalled(string memory batchId) external batchExists(batchId) onlyRecallManager {}
+
+    // Returns current batch state - used by frontend for QR code provenance lookups
+    function getBatch(string memory batchId) external view batchExists(batchId) returns (Batch memory) {}
+
+    // Returns full ordered audit trail - primary data source for provenance verification
+    function getCustodyHistory(string memory batchId) external view batchExists(batchId) returns (CustodyEvent[] memory) {}
+
+    function getCustodyEventCount(string memory batchId) external view batchExists(batchId) returns (uint256) {}
+
+    // Returns all batch IDs - used by Regulators for system-wide audits
+    function getAllBatchIds() external view returns (string[] memory) {}
+
+    // Used by AlertRecallManager to verify a caller is a registered participant
+    function getRole(address participant) external view returns (Role) {}
 }
