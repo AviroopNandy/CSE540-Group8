@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-// Interface to ProvenanceRegistry - only the functions this contract needs
+// Interface to ProvenanceRegistry — only the functions this contract needs
 interface IProvenanceRegistry {
     function markAsRecalled(string memory batchId) external;
     function getRole(address participant) external view returns (uint8);
@@ -15,8 +15,7 @@ contract AlertRecallManager {
 
     enum ViolationType { TemperatureExceedance, ContaminationDetected, PackagingBreach, RegulatoryFlag, FraudSuspicion, Other }
 
-    // Only HIGH triggers automatic recall
-    // LOW and MEDIUM require manual Admin review
+    // Only HIGH triggers automatic recall; LOW and MEDIUM require manual Admin review
     enum Severity { Low, Medium, High }
 
     enum ViolationStatus { Open, Recalled, Resolved, Dismissed }
@@ -58,42 +57,100 @@ contract AlertRecallManager {
     modifier onlyRegisteredParticipant() { require(provenanceRegistry.getRole(msg.sender) != 0, "Not a registered participant"); _; }
     modifier reportExists(uint256 reportId) { require(reportId > 0 && reportId <= reportCounter, "Report not found"); _; }
 
-    // Links this contract to the deployed ProvenanceRegistry
+    // Links this contract to the deployed ProvenanceRegistry.
     // After deployment, Admin must also call ProvenanceRegistry.setRecallManagerAddress(address(this))
     constructor(address _provenanceRegistryAddress) {
         owner = msg.sender;
         provenanceRegistry = IProvenanceRegistry(_provenanceRegistryAddress);
     }
 
-    // Any registered participant files a violation report
-    // For HIGH severity, _triggerRecall() called immediately
-    // For MEDIUM / LOW severity, reports are stored as Open for Admin review
+    // Any registered participant files a violation report.
+    // HIGH severity → _triggerRecall() called immediately.
+    // MEDIUM / LOW → stored as Open for Admin review.
     function reportViolation(
         string memory batchId,
         ViolationType violationType,
         Severity severity,
         string memory details,
         string memory evidenceIpfsCid
-    ) external onlyRegisteredParticipant {}
+    ) external onlyRegisteredParticipant {
+        require(!isRecalled[batchId], "Batch already recalled");
+
+        reportCounter++;
+        uint256 newReportId = reportCounter;
+
+        violationReports[newReportId] = ViolationReport({
+            reportId: newReportId,
+            batchId: batchId,
+            reportedBy: msg.sender,
+            violationType: violationType,
+            severity: severity,
+            details: details,
+            evidenceIpfsCid: evidenceIpfsCid,
+            timestamp: block.timestamp,
+            status: ViolationStatus.Open
+        });
+
+        batchViolations[batchId].push(newReportId);
+        totalReports++;
+
+        emit ViolationReported(newReportId, batchId, msg.sender, violationType, severity, block.timestamp);
+
+        // Automatically escalate to recall for HIGH severity violations
+        if (severity == Severity.High) {
+            _triggerRecall(batchId, newReportId);
+        }
+    }
 
     // Admin manually escalates an Open MEDIUM or LOW report to a recall
-    function triggerRecallManually(string memory batchId, uint256 reportId) external onlyOwner reportExists(reportId) {}
+    function triggerRecallManually(string memory batchId, uint256 reportId)
+        external onlyOwner reportExists(reportId) {
+        require(!isRecalled[batchId], "Batch already recalled");
+        require(
+            keccak256(bytes(violationReports[reportId].batchId)) == keccak256(bytes(batchId)),
+            "Report does not belong to this batch"
+        );
+        _triggerRecall(batchId, reportId);
+    }
 
     // Marks batch recalled locally, then cross-calls ProvenanceRegistry.markAsRecalled() to freeze the batch
-    function _triggerRecall(string memory batchId, uint256 reportId) internal {}
+    function _triggerRecall(string memory batchId, uint256 reportId) internal {
+        isRecalled[batchId] = true;
+        violationReports[reportId].status = ViolationStatus.Recalled;
+        provenanceRegistry.markAsRecalled(batchId);
+        emit RecallTriggered(batchId, reportId, msg.sender, block.timestamp);
+        emit ViolationStatusUpdated(reportId, ViolationStatus.Recalled, msg.sender, block.timestamp);
+    }
 
     // Admin updates status of an Open report after review; cannot revert a Recalled status
-    function updateViolationStatus(uint256 reportId, ViolationStatus newStatus) external onlyOwner reportExists(reportId) {}
+    function updateViolationStatus(uint256 reportId, ViolationStatus newStatus)
+        external onlyOwner reportExists(reportId) {
+        require(violationReports[reportId].status != ViolationStatus.Recalled, "Cannot change recalled report");
+        violationReports[reportId].status = newStatus;
+        emit ViolationStatusUpdated(reportId, newStatus, msg.sender, block.timestamp);
+    }
 
     // Admin sets acceptable value ranges per violation type for automated threshold checks
-    function setThreshold(ViolationType violationType, int256 minValue, int256 maxValue) external onlyOwner {}
+    function setThreshold(ViolationType violationType, int256 minValue, int256 maxValue) external onlyOwner {
+        require(minValue < maxValue, "Invalid range");
+        thresholds[violationType] = ThresholdConfig({ minValue: minValue, maxValue: maxValue, isActive: true });
+        emit ThresholdUpdated(violationType, minValue, maxValue, block.timestamp);
+    }
 
-    function getViolationReport(uint256 reportId) external view reportExists(reportId) returns (ViolationReport memory) {}
+    function getViolationReport(uint256 reportId) external view reportExists(reportId) returns (ViolationReport memory) {
+        return violationReports[reportId];
+    }
 
-    // Returns all report IDs for a batch - use with getViolationReport() to retrieve full details
-    function getViolationsForBatch(string memory batchId) external view returns (uint256[] memory) {}
+    // Returns all report IDs for a batch — use with getViolationReport() for full details
+    function getViolationsForBatch(string memory batchId) external view returns (uint256[] memory) {
+        return batchViolations[batchId];
+    }
 
-    function isBatchRecalled(string memory batchId) external view returns (bool) {}
+    function isBatchRecalled(string memory batchId) external view returns (bool) {
+        return isRecalled[batchId];
+    }
 
-    function getThreshold(ViolationType violationType) external view returns (ThresholdConfig memory) {}
+    function getThreshold(ViolationType violationType) external view returns (ThresholdConfig memory) {
+        return thresholds[violationType];
+    }
 }
