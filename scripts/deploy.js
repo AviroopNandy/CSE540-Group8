@@ -1,4 +1,5 @@
-const { ethers } = require("hardhat");
+import pkg from "hardhat";
+const { ethers } = pkg;
 
 async function main() {
   const signers = await ethers.getSigners();

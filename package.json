@@ -1,24 +1,17 @@
 {
-  "name": "cse540-group8",
-  "version": "1.0.0",
-  "description": "",
-  "main": "hardhat.config.js",
+  "name": "food-safety-provenance",
+  "version": "0.1.0",
+  "description": "Blockchain-Based Supply Chain Provenance System for Food Safety Tracking — CSE 540",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "node": "hardhat node"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/AviroopNandy/CSE540-Group8.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/AviroopNandy/CSE540-Group8/issues"
-  },
-  "homepage": "https://github.com/AviroopNandy/CSE540-Group8#readme",
-  "dependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^7.0.0",
-    "hardhat": "^3.2.0"
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.0",
+    "dotenv": "^16.0.0"
   }
 }

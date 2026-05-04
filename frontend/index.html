@@ -1,58 +1,388 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8"/>
   <title>Food Safety Provenance System</title>
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.0/dist/ethers.umd.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; }
-    h1 { color: #1a1a2e; }
-    h2 { color: #333; border-bottom: 2px solid #ccc; padding-bottom: 6px; }
-    .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-    input, select, textarea { width: 100%; padding: 8px; margin: 6px 0 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-    button { background: #1a1a2e; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
-    button:hover { background: #333; }
-    #status { padding: 10px; border-radius: 4px; margin-top: 10px; font-size: 14px; }
-    .info    { background: #d1ecf1; color: #0c5460; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; max-width: 860px; margin: 30px auto; padding: 0 20px; background: #f4f4f4; color: #222; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    h2 { font-size: 15px; margin: 0 0 12px; color: #444; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    .card { background: white; border-radius: 6px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    input, select { width: 100%; padding: 7px 9px; margin: 4px 0 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+    button { background: #1a1a2e; color: white; border: none; padding: 8px 18px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    button:hover { background: #2e2e50; }
+    #status { margin-top: 10px; padding: 9px 12px; border-radius: 4px; font-size: 13px; display:none; }
+    .success { background: #d4edda; color: #155724; display:block!important; }
+    .error   { background: #f8d7da; color: #721c24; display:block!important; }
+    .info    { background: #d1ecf1; color: #0c5460; display:block!important; }
+    pre { background: #f0f0f0; padding: 10px; border-radius: 4px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; }
+    label { font-size: 12px; color: #555; }
+    .wallet-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .wallet-bar span { font-size: 13px; color: #555; }
+    #walletAddress { font-weight: bold; font-size:13px; }
+    .hidden { display: none !important; }
+    .role-badge { background: #1a1a2e; color: white; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+    .ipfs-row { display: flex; gap: 8px; align-items: center; }
+    .ipfs-row input { margin: 4px 0 10px; flex: 1; }
+    .ipfs-btn { padding: 7px 12px; font-size: 12px; white-space: nowrap; margin-bottom: 6px; }
+    .ipfs-note { font-size: 11px; color: #999; margin: -6px 0 8px; }
   </style>
 </head>
 <body>
-    <h1>🌿 Food Safety Provenance System</h1>
-    <p>Blockchain-Based Supply Chain Tracking — CSE 540 | Team Project</p>
 
-    <div class="card">
-    <h2>Wallet</h2>
-    <p>Connected: <strong id="walletAddress">Not connected</strong></p>
+<h1>🌿 Food Safety Provenance System</h1>
+<p style="font-size:13px;color:#666;margin-bottom:16px;">CSE 540 - Group Course Project | Ethereum + Solidity + Ethers.js</p>
+
+<script>
+  // ── Contract addresses — update after running deploy.js ──────────────────
+  const PROVENANCE_REGISTRY_ADDRESS  = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+  const ALERT_RECALL_MANAGER_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
+
+  // ── Pinata IPFS config ────────────────────────────────────────────────────
+  // Replace with your Pinata JWT from https://app.pinata.cloud/keys
+  const PINATA_JWT = "YOUR_PINATA_JWT_HERE";
+  const PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs/";
+
+  const PROVENANCE_ABI = [
+    "function assignRole(address participant, uint8 role) external",
+    "function createBatch(string batchId, string productName, string originIpfsCid, string location, string notes) external",
+    "function transferCustody(string batchId, address to, uint8 newStage, string location, string ipfsCid, string notes) external",
+    "function markAsRecalled(string batchId) external",
+    "function getBatch(string batchId) external view returns (tuple(string batchId, string productName, address currentCustodian, uint8 currentStage, uint256 createdAt, uint256 updatedAt, string originIpfsCid, bool isRecalled))",
+    "function getCustodyHistory(string batchId) external view returns (tuple(address from, address to, uint8 stage, uint256 timestamp, string location, string ipfsCid, string notes)[])",
+    "function getRole(address participant) external view returns (uint8)",
+    "event BatchCreated(string indexed batchId, string productName, address indexed farmer, uint256 timestamp)",
+    "event CustodyTransferred(string indexed batchId, address indexed from, address indexed to, uint8 newStage, uint256 timestamp)",
+    "event BatchRecalled(string indexed batchId, address triggeredBy, uint256 timestamp)"
+  ];
+
+  const RECALL_ABI = [
+    "function reportViolation(string batchId, uint8 violationType, uint8 severity, string details, string evidenceIpfsCid) external",
+    "function isBatchRecalled(string batchId) external view returns (bool)",
+    "function getViolationReport(uint256 reportId) external view returns (tuple(uint256 reportId, string batchId, address reportedBy, uint8 violationType, uint8 severity, string details, string evidenceIpfsCid, uint256 timestamp, uint8 status))",
+    "event ViolationReported(uint256 indexed reportId, string indexed batchId, address indexed reportedBy, uint8 violationType, uint8 severity, uint256 timestamp)",
+    "event RecallTriggered(string indexed batchId, uint256 indexed triggeredByReportId, address triggeredBy, uint256 timestamp)"
+  ];
+
+  const STAGE_NAMES    = ["Harvested","Processing","Packaged","In Transit","At Retail","RECALLED","Consumed"];
+  const ROLE_NAMES     = ["None","Admin","Farmer","Processor","Logistics","Retailer","Regulator"];
+  const SEVERITY_NAMES = ["Low","Medium","High"];
+  const VTYPE_NAMES    = ["Temperature Exceedance","Contamination Detected","Packaging Breach","Regulatory Flag","Fraud Suspicion","Other"];
+
+  // Role constants matching the contract enum
+  const ROLE = { NONE:0, ADMIN:1, FARMER:2, PROCESSOR:3, LOGISTICS:4, RETAILER:5, REGULATOR:6 };
+
+  let provider, signer, registry, recall, currentRole;
+
+  // ── Wallet Connection ─────────────────────────────────────────────────────
+  async function connectWallet() {
+    if (!window.ethereum) { showStatus("MetaMask not detected.", "error"); return; }
+    provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer   = await provider.getSigner();
+    registry = new ethers.Contract(PROVENANCE_REGISTRY_ADDRESS, PROVENANCE_ABI, signer);
+    recall   = new ethers.Contract(ALERT_RECALL_MANAGER_ADDRESS, RECALL_ABI, signer);
+    const addr = await signer.getAddress();
+    document.getElementById("walletAddress").textContent = addr;
+
+    // Read role from contract and update UI
+    currentRole = Number(await registry.getRole(addr));
+    document.getElementById("walletRole").textContent = ROLE_NAMES[currentRole];
+    showStatus("Connected: " + addr, "success");
+
+    // Show/hide panels based on role
+    applyRoleVisibility(currentRole);
+  }
+
+  // ── Role-based panel visibility ───────────────────────────────────────────
+  // Each panel is shown only to the roles that need it:
+  //   Create Batch      → Farmer only
+  //   Transfer Custody  → Farmer, Processor, Logistics, Retailer (any current custodian)
+  //   Report Violation  → Processor, Logistics, Retailer, Regulator
+  //   Lookup            → everyone (public)
+  function applyRoleVisibility(role) {
+    const show = (id) => document.getElementById(id).classList.remove("hidden");
+    const hide = (id) => document.getElementById(id).classList.add("hidden");
+
+    // Start by hiding role-restricted panels
+    hide("panel-create");
+    hide("panel-transfer");
+    hide("panel-violation");
+
+    // Lookup is always visible to everyone
+    show("panel-lookup");
+
+    if (role === ROLE.ADMIN) {
+      show("panel-create");
+      show("panel-transfer");
+      show("panel-violation");
+    } else if (role === ROLE.FARMER) {
+      show("panel-create");
+      show("panel-transfer");
+    } else if (role === ROLE.PROCESSOR || role === ROLE.LOGISTICS || role === ROLE.RETAILER) {
+      show("panel-transfer");
+      show("panel-violation");
+    } else if (role === ROLE.REGULATOR) {
+      show("panel-violation");
+    }
+    // ROLE.NONE → only lookup panel visible
+  }
+
+  // ── IPFS Upload via Pinata ────────────────────────────────────────────────
+  // Uploads a file to IPFS through Pinata and returns the CID.
+  // The CID is then stored on-chain instead of the full file.
+  async function uploadToIPFS(fileInputId, cidOutputId) {
+    const fileInput = document.getElementById(fileInputId);
+    if (!fileInput.files || fileInput.files.length === 0) {
+      showStatus("No file selected for IPFS upload.", "error");
+      return null;
+    }
+    if (PINATA_JWT === "YOUR_PINATA_JWT_HERE") {
+      showStatus("⚠️ Pinata JWT not configured — using placeholder CID.", "info");
+      document.getElementById(cidOutputId).value = "QmDemo_" + Date.now();
+      return document.getElementById(cidOutputId).value;
+    }
+    try {
+      showStatus("Uploading file to IPFS...", "info");
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+      const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + PINATA_JWT },
+        body: formData
+      });
+      const data = await res.json();
+      if (!data.IpfsHash) throw new Error("Pinata upload failed: " + JSON.stringify(data));
+      document.getElementById(cidOutputId).value = data.IpfsHash;
+      showStatus("✅ File uploaded to IPFS: " + data.IpfsHash, "success");
+      return data.IpfsHash;
+    } catch(e) {
+      showStatus("❌ IPFS upload failed: " + e.message, "error");
+      return null;
+    }
+  }
+
+  // ── Create Batch ──────────────────────────────────────────────────────────
+  async function createBatch() {
+    try {
+      // Upload origin certificate to IPFS first if a file was selected
+      let cid = v("cb_cid");
+      if (document.getElementById("cb_file").files.length > 0) {
+        cid = await uploadToIPFS("cb_file", "cb_cid");
+        if (!cid) return;
+      }
+      showStatus("Submitting transaction...", "info");
+      const tx = await registry.createBatch(
+        v("cb_batchId"), v("cb_product"), cid || "QmDemo", v("cb_location"), v("cb_notes")
+      );
+      await tx.wait();
+      showStatus("✅ Batch created! Tx: " + tx.hash, "success");
+    } catch(e) { showStatus("❌ " + (e.reason || e.message), "error"); }
+  }
+
+  // ── Transfer Custody ──────────────────────────────────────────────────────
+  async function transferCustody() {
+    try {
+      // Upload supporting document to IPFS first if a file was selected
+      let cid = v("tc_cid");
+      if (document.getElementById("tc_file").files.length > 0) {
+        cid = await uploadToIPFS("tc_file", "tc_cid");
+        if (!cid) return;
+      }
+      showStatus("Submitting transaction...", "info");
+      const tx = await registry.transferCustody(
+        v("tc_batchId"), v("tc_to"), parseInt(v("tc_stage")),
+        v("tc_location"), cid || "QmDemo", v("tc_notes")
+      );
+      await tx.wait();
+      showStatus("✅ Custody transferred! Tx: " + tx.hash, "success");
+    } catch(e) { showStatus("❌ " + (e.reason || e.message), "error"); }
+  }
+
+  // ── Lookup Batch ──────────────────────────────────────────────────────────
+  async function lookupBatch() {
+    try {
+      const id       = v("lookup_id");
+      const batch    = await registry.getBatch(id);
+      const history  = await registry.getCustodyHistory(id);
+      const recalled = await recall.isBatchRecalled(id);
+
+      const result = {
+        batchId:          batch.batchId,
+        productName:      batch.productName,
+        currentCustodian: batch.currentCustodian,
+        currentStage:     STAGE_NAMES[Number(batch.currentStage)],
+        isRecalled:       recalled,
+        originIpfsCid:    batch.originIpfsCid,
+        originDocument:   batch.originIpfsCid !== "QmDemo" ? PINATA_GATEWAY + batch.originIpfsCid : "N/A",
+        createdAt:        new Date(Number(batch.createdAt) * 1000).toLocaleString(),
+        auditTrail: history.map(e => ({
+          from:      e.from,
+          to:        e.to,
+          stage:     STAGE_NAMES[Number(e.stage)],
+          timestamp: new Date(Number(e.timestamp) * 1000).toLocaleString(),
+          location:  e.location,
+          document:  e.ipfsCid !== "QmDemo" ? PINATA_GATEWAY + e.ipfsCid : "N/A",
+          notes:     e.notes
+        }))
+      };
+      document.getElementById("lookup_result").textContent = JSON.stringify(result, null, 2);
+    } catch(e) { showStatus("❌ " + (e.reason || e.message), "error"); }
+  }
+
+  // ── Report Violation ──────────────────────────────────────────────────────
+  async function reportViolation() {
+    try {
+      // Upload evidence document to IPFS first if a file was selected
+      let cid = v("rv_cid");
+      if (document.getElementById("rv_file").files.length > 0) {
+        cid = await uploadToIPFS("rv_file", "rv_cid");
+        if (!cid) return;
+      }
+      showStatus("Submitting violation report...", "info");
+      const severity = parseInt(v("rv_severity"));
+      const tx = await recall.reportViolation(
+        v("rv_batchId"), parseInt(v("rv_type")), severity, v("rv_details"), cid || "QmDemo"
+      );
+      await tx.wait();
+      const msg = severity === 2
+        ? "✅ HIGH severity — batch auto-recalled! Tx: " + tx.hash
+        : "✅ Violation reported (Open for review). Tx: " + tx.hash;
+      showStatus(msg, "success");
+    } catch(e) { showStatus("❌ " + (e.reason || e.message), "error"); }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function v(id) { return document.getElementById(id).value.trim(); }
+
+  function showStatus(msg, type) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = type;
+  }
+</script>
+
+<!-- Wallet -->
+<div class="card">
+  <h2>Wallet Connection</h2>
+  <div class="wallet-bar">
     <button onclick="connectWallet()">Connect MetaMask</button>
-    <div id="status" class="info">Connect your wallet to begin.</div>
-    </div>
+    <span id="walletAddress">Not connected</span>
+    <span id="walletRole" class="role-badge" style="display:none;"></span>
+  </div>
+  <div id="status"></div>
+</div>
 
-    <div class="card">
-    <h2>Create Batch <span style="font-size:13px;color:#888">(Farmer only)</span></h2>
-    <input id="cb_batchId"     placeholder="Batch ID (e.g., BATCH-2026-001)" />
-    <input id="cb_productName" placeholder="Product Name (e.g., Romaine Lettuce)" />
-    <input id="cb_ipfsCid"     placeholder="Origin Certificate IPFS CID (optional)" />
-    <input id="cb_location"    placeholder="Farm Location (e.g., Yuma, AZ)" />
-    <input id="cb_notes"       placeholder="Notes (e.g., Organic certified, field #4)" />
-    <button onclick="createBatch()">Create Batch</button>
-    </div>
+<!-- Create Batch — Farmer only -->
+<div id="panel-create" class="card hidden">
+  <h2>Create Batch <span style="font-size:11px;color:#888">(Farmer only)</span></h2>
+  <label>Batch ID</label>
+  <input id="cb_batchId" placeholder="e.g. BATCH-2026-001"/>
+  <label>Product Name</label>
+  <input id="cb_product" placeholder="e.g. Romaine Lettuce"/>
+  <label>Origin Certificate <span style="color:#aaa">(upload to IPFS)</span></label>
+  <div class="ipfs-row">
+    <input type="file" id="cb_file" style="margin:4px 0 10px;"/>
+    <button class="ipfs-btn" onclick="uploadToIPFS('cb_file','cb_cid')">Upload</button>
+  </div>
+  <p class="ipfs-note">File is uploaded to IPFS; only the content hash is stored on-chain.</p>
+  <label>IPFS CID <span style="color:#aaa">(auto-filled after upload, or enter manually)</span></label>
+  <input id="cb_cid" placeholder="QmXyz..."/>
+  <label>Farm Location</label>
+  <input id="cb_location" placeholder="e.g. Yuma, AZ"/>
+  <label>Notes</label>
+  <input id="cb_notes" placeholder="e.g. Organic, Field #4"/>
+  <button onclick="createBatch()">Create Batch</button>
+</div>
 
-    <div class="card">
-    <h2>Transfer Custody</h2>
-    <input id="tc_batchId"  placeholder="Batch ID" />
-    <input id="tc_to"       placeholder="Recipient Wallet Address (0x...)" />
-    <select id="tc_stage">
-        <option value="1">Processing</option>
-        <option value="2">Packaged</option>
-        <option value="3">In Transit</option>
-        <option value="4">At Retail</option>
-        <option value="6">Consumed</option>
-    </select>
-    <input id="tc_location" placeholder="Transfer Location (e.g., Phoenix, AZ Cold Storage)" />
-    <input id="tc_ipfsCid"  placeholder="Supporting Document IPFS CID (optional)" />
-    <input id="tc_notes"    placeholder="Notes (e.g., Temperature: 3°C, Vehicle ID: TR-44)" />
-    <button onclick="transferCustody()">Transfer Custody</button>
-    </div>
-    </body>
+<!-- Transfer Custody -->
+<div id="panel-transfer" class="card hidden">
+  <h2>Transfer Custody</h2>
+  <label>Batch ID</label>
+  <input id="tc_batchId" placeholder="e.g. BATCH-2026-001"/>
+  <label>Recipient Address</label>
+  <input id="tc_to" placeholder="0x..."/>
+  <label>New Stage</label>
+  <select id="tc_stage">
+    <option value="1">Processing</option>
+    <option value="2">Packaged</option>
+    <option value="3">In Transit</option>
+    <option value="4">At Retail</option>
+  </select>
+  <label>Location</label>
+  <input id="tc_location" placeholder="e.g. Phoenix, AZ Cold Storage"/>
+  <label>Supporting Document <span style="color:#aaa">(upload to IPFS)</span></label>
+  <div class="ipfs-row">
+    <input type="file" id="tc_file" style="margin:4px 0 10px;"/>
+    <button class="ipfs-btn" onclick="uploadToIPFS('tc_file','tc_cid')">Upload</button>
+  </div>
+  <p class="ipfs-note">File is uploaded to IPFS; only the content hash is stored on-chain.</p>
+  <label>IPFS CID <span style="color:#aaa">(auto-filled after upload, or enter manually)</span></label>
+  <input id="tc_cid" placeholder="QmXyz..."/>
+  <label>Notes</label>
+  <input id="tc_notes" placeholder="e.g. Temp: 3°C, Truck ID: TR-44"/>
+  <button onclick="transferCustody()">Transfer Custody</button>
+</div>
+
+<!-- Lookup — public -->
+<div id="panel-lookup" class="card hidden">
+  <h2>Batch Provenance Lookup <span style="font-size:11px;color:#888">(Public)</span></h2>
+  <label>Batch ID</label>
+  <input id="lookup_id" placeholder="e.g. BATCH-2026-001"/>
+  <button onclick="lookupBatch()">Lookup</button>
+  <pre id="lookup_result" style="margin-top:10px;">Results will appear here...</pre>
+</div>
+
+<!-- Report Violation -->
+<div id="panel-violation" class="card hidden">
+  <h2>Report Safety Violation <span style="font-size:11px;color:#888">(Registered participants only)</span></h2>
+  <label>Batch ID</label>
+  <input id="rv_batchId" placeholder="e.g. BATCH-2026-001"/>
+  <label>Violation Type</label>
+  <select id="rv_type">
+    <option value="0">Temperature Exceedance</option>
+    <option value="1">Contamination Detected</option>
+    <option value="2">Packaging Breach</option>
+    <option value="3">Regulatory Flag</option>
+    <option value="4">Fraud Suspicion</option>
+    <option value="5">Other</option>
+  </select>
+  <label>Severity</label>
+  <select id="rv_severity">
+    <option value="0">Low — log and monitor</option>
+    <option value="1">Medium — notify stakeholders, review required</option>
+    <option value="2">High — AUTO-RECALL triggered immediately</option>
+  </select>
+  <label>Details</label>
+  <input id="rv_details" placeholder="Describe the violation..."/>
+  <label>Evidence Document <span style="color:#aaa">(upload to IPFS)</span></label>
+  <div class="ipfs-row">
+    <input type="file" id="rv_file" style="margin:4px 0 10px;"/>
+    <button class="ipfs-btn" onclick="uploadToIPFS('rv_file','rv_cid')">Upload</button>
+  </div>
+  <p class="ipfs-note">File is uploaded to IPFS; only the content hash is stored on-chain.</p>
+  <label>IPFS CID <span style="color:#aaa">(auto-filled after upload, or enter manually)</span></label>
+  <input id="rv_cid" placeholder="QmXyz..."/>
+  <button onclick="reportViolation()">Submit Report</button>
+</div>
+
+<script>
+  // Show role badge once wallet is connected
+  const _origConnect = connectWallet;
+  // Patch role badge visibility after connect
+  document.addEventListener("DOMContentLoaded", () => {
+    const badge = document.getElementById("walletRole");
+    const origFn = window.connectWallet;
+    window.connectWallet = async function() {
+      await origFn();
+      if (currentRole !== undefined) {
+        badge.style.display = "inline";
+      }
+    };
+  });
+</script>
+
+</body>
 </html>
